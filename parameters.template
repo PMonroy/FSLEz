@@ -1,0 +1,20 @@
+#################################################################################
+# GENERAL PARAMETERS
+#################################################################################
+# vfield
+# 0 = MODEL FORECAST 1/12
+vfield=0
+# Study domain:
+# 
+domainmin= 75 -55 1.0 
+# Intergrid longitudinal (in decimal degree)
+intergrid= 0.08 0.08 50.0
+domainmax= 80 -50 101.0
+# seeddate = seed date of tracers (dd-mm-yyyy)
+seeddate= 27-11-2014
+# Integration time step (in days)
+intstep=0.25
+# Integration time
+tau=-60
+# Deltamax
+deltamax=20000.0
