@@ -201,7 +201,7 @@ int main(int argc, char **argv){
   if(verbose == 1){//Verbose: loading velocities from model 
     cout << "Loading velocities from model:" << endl;
   }
-  if(loadvflow(*inidate, ntime+2, vfield)!=0){// Load velocity field
+  if(loadvflow(*inidate, ntime+2, vfield, domainmin, domainmax)!=0){// Load velocity field
     cout << "[Fail]"<< endl;
     return 1;
   }
@@ -442,7 +442,7 @@ int main(int argc, char **argv){
   vtkfile<<grid[qcore[0]].x-(intergrid.x/2.0)<<" ";
   vtkfile<<grid[qcore[0]].y-(intergrid.y/2.0)<<" ";
   vtkfile<<grid[qcore[0]].z-(intergrid.z/2.0) <<endl;
-  vtkfile<<"SPACING "<<intergrid.x<<" "<<intergrid.y<<" "<< intergrid.z <<endl;
+  vtkfile<<"SPACING "<<intergrid.x<<" "<<intergrid.y<<" "<< -intergrid.z <<endl;
   vtkfile<<"CELL_DATA "<<(dimgrid.i-2)*(dimgrid.j-2)*(dimgrid.k)<<endl;
   vtkfile<<"SCALARS fslez double"<<endl;
   vtkfile<<"LOOKUP_TABLE default"<<endl;

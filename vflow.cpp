@@ -18,6 +18,7 @@ static const int NC_ERR = 2;
 
 //EXTERN VARIABLES
 extern int verbose;
+extern int tau;
 
 //GLOBAL VARIABLES
 int nvlon, nvlat, nvdepth;
@@ -56,6 +57,7 @@ velocitymodel vmodel[NUMMODELS];
 
 //FUNCTIONS PROTOTYPES
 int GetIndices(vectorXYZ point, vectorIJK *index, int vfield);
+vectorIJK GetIndices(vectorXYZ point, int vfield);
 void locate(double xx[], unsigned int n, double x, unsigned int *j);
 void loadparamsmodel(void);
 
@@ -157,7 +159,7 @@ if (!vdepthVar->get(&vdepth[0], nvdepth))
 
 return 0;
 }
-int loadvflow(struct tm seeddate, int ntime, int vfield){
+int loadvflow(struct tm seeddate, int ntime, int vfield, vectorXYZ domainmin, vectorXYZ domainmax){
 
   struct tm *date = {0};
   time_t seedtime, time; // Date in seconds UTC
@@ -168,8 +170,37 @@ int loadvflow(struct tm seeddate, int ntime, int vfield){
   
   vector <long int> ubuffer;
   vector <long int> vbuffer;
-  
-  int nv = nvdepth*nvlat*nvlon;
+
+  vectorIJK indexmin,indexmax;
+  vectorXYZ vdomainmin,vdomainmax;
+  double avehorvel = 0.1; // meter per seconds
+
+  vdomainmin.x=domainmin.x -(avehorvel*secondsday*abs(tau)*degrees)/(rearth*cos(rads*domainmin.y)) ;
+  vdomainmin.y=domainmin.y -(avehorvel*secondsday*abs(tau)*degrees)/rearth ;
+  vdomainmin.z=domainmin.z;
+
+  vdomainmax.x=domainmax.x +(avehorvel*secondsday*abs(tau)*degrees)/(rearth*cos(rads*domainmax.y)) ;
+  vdomainmax.y=domainmax.y +(avehorvel*secondsday*abs(tau)*degrees)/rearth ;
+  vdomainmax.z=domainmax.z;
+
+  indexmin=GetIndices(vdomainmin,vfield);
+  indexmax=GetIndices(vdomainmax,vfield);
+  indexmax+=vectorIJK(1,1,1);
+
+  vdepth.erase(vdepth.begin()+indexmax.k+1,vdepth.end());
+  vdepth.erase(vdepth.begin(),vdepth.begin()+indexmin.k);
+
+  vlon.erase(vlon.begin()+indexmax.i+1,vlon.end());
+  vlon.erase(vlon.begin(),vlon.begin()+indexmin.i);
+
+  vlat.erase(vlat.begin()+indexmax.j+1,vlat.end());
+  vlat.erase(vlat.begin(),vlat.begin()+indexmin.j);
+
+  int nv = vdepth.size()*vlat.size()*vlon.size();
+
+  nvlon = vlon.size();
+  nvlat = vlat.size();
+  nvdepth = vdepth.size();
   
   ubuffer.resize(nv);
   vbuffer.resize(nv);
@@ -182,99 +213,55 @@ int loadvflow(struct tm seeddate, int ntime, int vfield){
     date = gmtime(&time);
 
     sprintf(ncfile, "%s%04d-%02d-%02d.nc",vmodel[vfield].dir.c_str(),date->tm_year, date->tm_mon+1, date->tm_mday);
-     NcFile dataFile(ncfile, NcFile::ReadOnly);
+    NcFile dataFile(ncfile, NcFile::ReadOnly);
 
-     if(verbose==1){ //Reading nc file 
-	cout << "Reading nc file: " << ncfile << " ";
-     }
+    if(verbose==1){ //Reading nc file 
+      cout << "Reading nc file: " << ncfile << " ";
+    }
 
-     if(!dataFile.is_valid()){ //Check to see if the file was opened.
-       cout << "[Fail]" <<endl;
-       return NC_ERR;
-     }
+    if(!dataFile.is_valid()){ //Check to see if the file was opened.
+      cout << "[Fail]" <<endl;
+      return NC_ERR;
+    }
+    
+    if (!(uVar = dataFile.get_var(vmodel[vfield].suvar.c_str()))){
+      cout << "[Fail]" <<endl;
+      return NC_ERR;
+    }
+    if (!(vVar = dataFile.get_var(vmodel[vfield].svvar.c_str()))){
+      cout << "[Fail]" <<endl;
+      return NC_ERR;
+    }
+
+
+    if (!uVar->set_cur(0, indexmin.k, indexmin.j, indexmin.i)){
+      cout << "[Fail]" <<endl;
+      return NC_ERR;
+    }
+    if (!vVar->set_cur(0, indexmin.k, indexmin.j, indexmin.i)){
+      cout << "[Fail]" <<endl;
+      return NC_ERR;
+    }
      
-     if (!(uVar = dataFile.get_var(vmodel[vfield].suvar.c_str()))){
-       cout << "[Fail]" <<endl;
-       return NC_ERR;
-     }
-     if (!(vVar = dataFile.get_var(vmodel[vfield].svvar.c_str()))){
-       cout << "[Fail]" <<endl;
-       return NC_ERR;
-     }
+    if (!uVar->get(&ubuffer[0], 1, nvdepth, nvlat, nvlon)){
+      cout << "[Fail]" <<endl;
+      return NC_ERR;
+    }
+    if (!vVar->get(&vbuffer[0], 1, nvdepth, nvlat, nvlon)){
+      cout << "[Fail]" <<endl;
+      return NC_ERR;
+    }
 
-
-     if (!uVar->set_cur(0, 0, 0, 0)){
-       cout << "[Fail]" <<endl;
-       return NC_ERR;
-     }
-     if (!vVar->set_cur(0, 0, 0, 0)){
-       cout << "[Fail]" <<endl;
-       return NC_ERR;
-     }
-     
-     if (!uVar->get(&ubuffer[0], 1, nvdepth, nvlat, nvlon)){
-       cout << "[Fail]" <<endl;
-       return NC_ERR;
-     }
-     if (!vVar->get(&vbuffer[0], 1, nvdepth, nvlat, nvlon)){
-       cout << "[Fail]" <<endl;
-       return NC_ERR;
-     }
-
-     //int nvlayer = nvlon*nvlat;
-     //int kbuff;
-     
-     //double debugx;
-     //double debugy;
-
-     for(int q=0; q<nv; q++){
-       //k = (int) (q/nvlayer);
-       //kbuff = q - k*nvlayer;
-       //j = (int) (kbuff/nvlon);
-       //i = (kbuff-j*nvlon);
-       
-       //debugx = ((double) ubuffer[q])*vmodel[vfield].uscalefactor;
-       //debugy = ((double) vbuffer[q])*vmodel[vfield].vscalefactor;
-       
-       vflow.push_back(vectorXYZ(((double) ubuffer[q])*vmodel[vfield].uscalefactor,
+    for(int q=0; q<nv; q++){       
+      vflow.push_back(vectorXYZ(((double) ubuffer[q])*vmodel[vfield].uscalefactor,
 				 ((double) vbuffer[q])*vmodel[vfield].vscalefactor,
 				 0.0));
-     }
-     if(verbose==1){//Success file read
-	cout << "[Complete]" << endl;
-     }
+    }
+    if(verbose==1){//Success file read
+      cout << "[Complete]" << endl;
+    }
   }
 
-  /*  ofstream vfile("velocities.vtk");
-  
-  vfile<<"# vtk DataFile Version 3.0"<<endl;
-  vfile<<"Complete data GLORY"<<endl; 
-  vfile<<"ASCII"<<endl;
-  vfile<<"DATASET STRUCTURED_GRID"<<endl;
-  vfile<<"DIMENSIONS "<< nvlon <<" "<< nvlat <<" "<<1<<endl;
-  vfile<<"POINTS "<< nvlon*nvlat <<" float"<<endl;
-  
-  for(int j=0;j<nvlat;j++) 
-    {
-      for(int i=0;i<nvlon;i++) 
-	{
-	  vfile << vlon[i] <<" "<< vlat[j]<<" "<< 0.0 <<endl;
-	}
-    }
-  vfile<<endl;
-  vfile<<"POINT_DATA "<< nvlon*nvlat <<endl;
-  vfile<<"VECTORS velocity float"<<endl;
-  for(int j=0;j<nvlat;j++) 
-    {
-      for(int i=0;i<nvlon;i++)
-	{	
-	  vfile<<vflow[ntime-1][j][i].x<<" ";
-	  vfile<<vflow[ntime-1][j][i].y<<" ";
-	  vfile<<0.0<<endl;
-	}
-    }
-    vfile.close();*/
-    
   return 0;
 }
 
@@ -282,25 +269,55 @@ int GetIndices(vectorXYZ point, vectorIJK *index, int vfield){
 
   /* Locate index longitude*/
   index->i = floor((point.x-vlon[0])/vmodel[vfield].lonstep);
-  if(index->i < 0 || index->i >= (nvlon-1))
+  if(index->i < 0 || index->i >= (int)(vlon.size()-1))
       return 1;
 
   /* Locate index latitude*/
   index->j = floor((point.y-vlat[0])/vmodel[vfield].latstep);
-  if(index->j < 0 || index->j >= (nvlat-1))
+  if(index->j < 0 || index->j >= (int)(vlat.size()-1))
       return 1;
 
   /* Locate index latitude*/
   double *vvdepth = &vdepth[0]-1;
   unsigned int index_depth;
-  locate(vvdepth, (unsigned int) nvdepth, point.z, &index_depth);
-  if(index_depth == 0 || index_depth == (unsigned int) nvdepth)
+  locate(vvdepth, vdepth.size(), point.z, &index_depth);
+  if(index_depth == 0 || index_depth == vdepth.size())
     return 1;
   else
     index->k = index_depth - 1;
 
   return 0;
 }
+vectorIJK GetIndices(vectorXYZ point, int vfield){
+
+  vectorIJK index;
+
+  /* Locate index longitude*/
+  index.i = floor((point.x-vlon[0])/vmodel[vfield].lonstep);
+  if(index.i < 0)
+    index.i=0;
+  else if(index.i>=(nvlon-1))
+    index.i=(nvlon-1);
+
+  /* Locate index latitude*/
+  index.j = floor((point.y-vlat[0])/vmodel[vfield].latstep);
+  if(index.j < 0)
+    index.j=0;
+  else if(index.j>=(nvlat-1))
+    index.j=(nvlat-1);
+
+  /* Locate index latitude*/
+  double *vvdepth = &vdepth[0]-1;
+  unsigned int index_depth;
+  locate(vvdepth, nvdepth, point.z, &index_depth);
+  if(index_depth == 0)
+    index.k=0;
+  else
+    index.k=index_depth-1;
+
+  return index;
+}
+
 int getvflow(double t,vectorXYZ point, vectorXYZ *vint, int vfield){
 
   vectorXYZ vgrid[16];
@@ -332,7 +349,9 @@ int getvflow(double t,vectorXYZ point, vectorXYZ *vint, int vfield){
 	  vgrid[q].x = vlon[i];
 	  vgrid[q].y = vlat[j];
 	  vgrid[q].z = vdepth[k];
-	  vcomp[q] = vflow[l*(nvdepth*nvlat*nvlon)+k*(nvlat*nvlon)+j*(nvlon)+i];
+	  vcomp[q] = vflow[ l*(vdepth.size()*vlat.size()*vlon.size())
+			    +k*(vlat.size()*vlon.size())
+			    +j*vlon.size()+i];
 	  
 	  /* COAST CHECKING!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!! */
 	  if(vcomp[q].x == vmodel[vfield].ufillvalue || vcomp[q].y == vmodel[vfield].vfillvalue)
