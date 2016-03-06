@@ -1,4 +1,5 @@
-CC_MONO=g++ -ggdb -Wall -mcmodel=medium
+#CC_MONO=g++ -ggdb -Wall -mcmodel=medium #TO DEBUG
+CC_MONO=g++ -O2 -Wall -mcmodel=medium #TO OPTIMIZE
 
 CC=$(CC_MONO)
 

@@ -22,13 +22,14 @@ extern int tau;
 
 //GLOBAL VARIABLES
 int nvlon, nvlat, nvdepth;
-vector <double> vlon;
-vector <double> vlat;
-vector <double> vdepth;
-vector <vectorXYZ> vflow;
+
+vector<double > vlon;
+vector<double > vlat;
+vector<double > vdepth;
+vector<vectorXYZ > vflow;
 
 // FLOW MODEL PARAMETERS
-enum vmodels {  MYOCEAN,
+enum vmodels {  MYOCEAN,fi
 	      NUMMODELS
 };
 struct velocitymodel {
@@ -173,14 +174,14 @@ int loadvflow(struct tm seeddate, int ntime, int vfield, vectorXYZ domainmin, ve
 
   vectorIJK indexmin,indexmax;
   vectorXYZ vdomainmin,vdomainmax;
-  double avehorvel = 0.1; // meter per seconds
+  double avehorvel = 0.2; // meter per seconds
 
-  vdomainmin.x=domainmin.x -(avehorvel*secondsday*abs(tau)*degrees)/(rearth*cos(rads*domainmin.y)) ;
-  vdomainmin.y=domainmin.y -(avehorvel*secondsday*abs(tau)*degrees)/rearth ;
+  vdomainmin.x=domainmin.x-(avehorvel*secondsday*abs(tau)*degrees)/(rearth*cos(rads*domainmin.y));
+  vdomainmin.y=domainmin.y-(avehorvel*secondsday*abs(tau)*degrees)/rearth ;
   vdomainmin.z=domainmin.z;
 
-  vdomainmax.x=domainmax.x +(avehorvel*secondsday*abs(tau)*degrees)/(rearth*cos(rads*domainmax.y)) ;
-  vdomainmax.y=domainmax.y +(avehorvel*secondsday*abs(tau)*degrees)/rearth ;
+  vdomainmax.x=domainmax.x+(avehorvel*secondsday*abs(tau)*degrees)/(rearth*cos(rads*domainmax.y));
+  vdomainmax.y=domainmax.y+(avehorvel*secondsday*abs(tau)*degrees)/rearth;
   vdomainmax.z=domainmax.z;
 
   indexmin=GetIndices(vdomainmin,vfield);
@@ -201,7 +202,7 @@ int loadvflow(struct tm seeddate, int ntime, int vfield, vectorXYZ domainmin, ve
   nvlon = vlon.size();
   nvlat = vlat.size();
   nvdepth = vdepth.size();
-  
+
   ubuffer.resize(nv);
   vbuffer.resize(nv);
   vflow.reserve(nv*ntime);
@@ -218,12 +219,10 @@ int loadvflow(struct tm seeddate, int ntime, int vfield, vectorXYZ domainmin, ve
     if(verbose==1){ //Reading nc file 
       cout << "Reading nc file: " << ncfile << " ";
     }
-
     if(!dataFile.is_valid()){ //Check to see if the file was opened.
       cout << "[Fail]" <<endl;
       return NC_ERR;
     }
-    
     if (!(uVar = dataFile.get_var(vmodel[vfield].suvar.c_str()))){
       cout << "[Fail]" <<endl;
       return NC_ERR;
@@ -232,7 +231,6 @@ int loadvflow(struct tm seeddate, int ntime, int vfield, vectorXYZ domainmin, ve
       cout << "[Fail]" <<endl;
       return NC_ERR;
     }
-
 
     if (!uVar->set_cur(0, indexmin.k, indexmin.j, indexmin.i)){
       cout << "[Fail]" <<endl;
@@ -254,8 +252,8 @@ int loadvflow(struct tm seeddate, int ntime, int vfield, vectorXYZ domainmin, ve
 
     for(int q=0; q<nv; q++){       
       vflow.push_back(vectorXYZ(((double) ubuffer[q])*vmodel[vfield].uscalefactor,
-				 ((double) vbuffer[q])*vmodel[vfield].vscalefactor,
-				 0.0));
+				((double) vbuffer[q])*vmodel[vfield].vscalefactor,
+				0.0));
     }
     if(verbose==1){//Success file read
       cout << "[Complete]" << endl;
@@ -329,6 +327,7 @@ int getvflow(double t,vectorXYZ point, vectorXYZ *vint, int vfield){
   int i,j,k,l;
   int deltai,deltaj,deltak,deltatime;
   unsigned int q;
+  unsigned int p, pl,pk,pj;
 
   time = (unsigned long) t;
 
@@ -336,22 +335,28 @@ int getvflow(double t,vectorXYZ point, vectorXYZ *vint, int vfield){
       return 1;
 
   /* Vectors and points with only one int index*/
+  
   q=0;  
   for(deltatime=0; deltatime<2; deltatime++){
-    for(deltai=0; deltai<2; deltai++){
+    l = time+deltatime;
+    pl = l*nvdepth;
+
+    for(deltak=0; deltak<2; deltak++){
+      k = index.k + deltak;
+      pk = (pl + k) * nvlat; 
+
       for(deltaj=0; deltaj<2; deltaj++){
-	for(deltak=0; deltak<2; deltak++){
+	j = index.j + deltaj;
+	pj = (pk + j) * nvlon; 
+
+	for(deltai=0; deltai<2; deltai++){
 	  i = index.i + deltai;
-	  j = index.j + deltaj;
-	  k = index.k + deltak;
-	  l = time+deltatime;
+	  p = pj + i;
 	
 	  vgrid[q].x = vlon[i];
 	  vgrid[q].y = vlat[j];
 	  vgrid[q].z = vdepth[k];
-	  vcomp[q] = vflow[ l*(vdepth.size()*vlat.size()*vlon.size())
-			    +k*(vlat.size()*vlon.size())
-			    +j*vlon.size()+i];
+	  vcomp[q] = vflow[p];
 	  
 	  /* COAST CHECKING!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!! */
 	  if(vcomp[q].x == vmodel[vfield].ufillvalue || vcomp[q].y == vmodel[vfield].vfillvalue)
@@ -363,32 +368,27 @@ int getvflow(double t,vectorXYZ point, vectorXYZ *vint, int vfield){
     }
   }
 
-/* Depth Interpolation: */
-   alpha = (vgrid[1].z - point.z)/(vgrid[1].z - vgrid[0].z);
-   beta = 1 - alpha;
- for(q=0; q<16; q+=2)
-    {
-      vcomp[q>>1] = alpha * vcomp[q] + beta * vcomp[q+1];
-      vgrid[q>>1] = vgrid[q]; 
-    }
+  /* Longitude Interpolation: */
+  alpha = (vgrid[1].x - point.x)/(vgrid[1].x - vgrid[0].x);
+  beta = 1 - alpha;
+  for(q=0; q<16; q+=2){
+    vcomp[q>>1] = alpha * vcomp[q] + beta * vcomp[q+1];
+    vgrid[q>>1] = vgrid[q]; 
+  }
   /* Latitude Interpolation: */
   alpha = (vgrid[1].y - point.y)/(vgrid[1].y - vgrid[0].y);
   beta = 1.0 - alpha;
-  for(q = 0; q < 8; q+=2)
-    {
-      vcomp[q>>1] = alpha * vcomp[q] + beta * vcomp[q+1];
-      vgrid[q>>1] = vgrid[q];
-    }
-
+  for(q = 0; q < 8; q+=2){
+    vcomp[q>>1] = alpha * vcomp[q] + beta * vcomp[q+1];
+    vgrid[q>>1] = vgrid[q];
+  }
   /* Longitude Interpolation */
-  alpha = (vgrid[1].x - point.x)/(vgrid[1].x - vgrid[0].x);
+  alpha = (vgrid[1].z - point.z)/(vgrid[1].z - vgrid[0].z);
   beta = 1.0 - alpha;
-  for(q = 0; q < 4; q+=2)
-    {
-      vcomp[q>>1] = alpha * vcomp[q] + beta * vcomp[q+1];
-      vgrid[q>>1] = vgrid[q];
-    }
-
+  for(q = 0; q < 4; q+=2){
+    vcomp[q>>1] = alpha * vcomp[q] + beta * vcomp[q+1];
+    vgrid[q>>1] = vgrid[q];
+  }
   /* Time Interpolation: */ 
   alpha = ((double) (time + 1)) - t;  
   beta = 1.0 - alpha;   

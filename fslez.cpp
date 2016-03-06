@@ -92,19 +92,25 @@ int main(int argc, char **argv){
     cout << endl;
   }
 
+  unsigned int numgridpoints=grid.size();
+  unsigned int numneighbors=neighbor.size();
+
   /**********************************************
    * COMPUTE INITIAL SEPARATION
    **********************************************/
 
   vectorXYZ delta,scalefactor;
   vector<double> ilength;
+  unsigned int q;
   unsigned int p;
+  unsigned int dir;
 
-  ilength.reserve(6*grid.size());
+  
+  ilength.reserve(numneighbors);
 
-  for(unsigned int q=0; q<grid.size(); q++){
+  for(q=0; q<numgridpoints; q++){
     p=6*q;
-    for(int dir=0; dir<6; dir++){
+    for(dir=0; dir<6; dir++){
       if(neighbor[p+dir]!=-1){
 	delta=grid[neighbor[p+dir]]-grid[q];
 	
@@ -135,12 +141,12 @@ int main(int argc, char **argv){
   vector<int> qflag;
 
   //Reserve memory to improve efficiency
-  exit_time.reserve(grid.size());
-  response.reserve(grid.size());
-  qcore.reserve(grid.size());
-  qflag.reserve(grid.size());
+  exit_time.reserve(numgridpoints);
+  response.reserve(numgridpoints);
+  qcore.reserve(numgridpoints);
+  qflag.reserve(numgridpoints);
 
-  for(unsigned int q=0; q<grid.size(); q++){
+  for(q=0; q<numgridpoints; q++){
     p=6*q;
     if(neighbor[p]!=-1 && neighbor[p+1]!=-1 && neighbor[p+3]!=-1 && neighbor[p+4]!=-1){
       qflag.push_back(1);// Initially we can compute fsle in this points (num. hor. neighbours = 4)
@@ -221,6 +227,7 @@ int main(int argc, char **argv){
   
   int q0, q1, q3, q4; 
   int qdir;
+  int pdir;
 
   unsigned int step;
   double t;
@@ -235,13 +242,14 @@ int main(int argc, char **argv){
     }
 
     /* Compute the position of tracer in time t=t+h*/
-    for (unsigned int q = 0; q<tracer.size() ; q++)
+    for (q=0; q<numgridpoints; q++)
       {
 	//index of four q-neighbors
-	q0 = neighbor[6*q];
-	q1 = neighbor[6*q+1];
-	q3 = neighbor[6*q+3];
-	q4 = neighbor[6*q+4];
+	p=6*q;
+	q0=neighbor[p];
+	q1=neighbor[p+1];
+	q3=neighbor[p+3];
+	q4=neighbor[p+4];
 	
 	if(qflag[q]==-1){//Skip the rest of the loop if q is a non-integrable point 
 	  continue;
@@ -263,10 +271,10 @@ int main(int argc, char **argv){
       }
 
     /* Compute the relative distances */
-    for(unsigned int q=0; q<tracer.size(); q++)
+    for(q=0; q<numgridpoints; q++)
       {
 	p=6*q;
-	for(int dir=0; dir<2; dir++){
+	for(dir=0; dir<2; dir++){
 	  qdir = neighbor[p+dir];
 	  if(qdir==-1) // if grid point hasn't neighbour in direction dir,
 	    continue;  // jump to the next step in the loop
@@ -283,26 +291,29 @@ int main(int argc, char **argv){
 	    
 	    delta=delta*scalefactor;
 	    delta*=delta;
-	  
-	    length[p+dir]=sqrt(delta.x+delta.y+delta.z);
-	    length[6*qdir+3]=length[p+dir];
+
+	    pdir=p+dir; 
+	    length[pdir]=sqrt(delta.x+delta.y+delta.z);
+	    length[6*qdir+3]=length[pdir];
 	  }
 	}
       }
 
     /* Compute the max length*/
-    for(unsigned int q=0; q<tracer.size(); q++)
+    for(q=0; q<numgridpoints; q++)
       {
 	if(qflag[q]==1){
 	  p=6*q;
 	  lengthmax=length[p];// May we initialize lengthmax before?
-	  for(int dir=0; dir<2; dir++){
-	    if(length[p+dir]>lengthmax){
-	      lengthmax=length[p+dir];
+	  dirmax=0;
+	  for(dir=0; dir<2; dir++){
+	    pdir = p+dir;
+	    if(length[pdir]>lengthmax){
+	      lengthmax=length[pdir];
 	      dirmax=dir;
 	    }
-	    if(length[p+dir+3]>lengthmax){
-	      lengthmax=length[p+dir+3];
+	    if(length[pdir+3]>lengthmax){
+	      lengthmax=length[pdir+3];
 	      dirmax=dir+3;
 	    }
 	  }
@@ -324,9 +335,10 @@ int main(int argc, char **argv){
    **********************************************************/
 
   vector<double> fsle;
+  unsigned int numcorepoints=qcore.size();
 
-  fsle.reserve(grid.size());
-  for(unsigned int q=0; q<qcore.size(); q++){
+  fsle.reserve(numgridpoints);
+  for(q=0; q<numcorepoints; q++){
     fsle.push_back(log(response[qcore[q]])/exit_time[qcore[q]]);
   }
 
@@ -345,7 +357,7 @@ int main(int argc, char **argv){
   ofstream ofilegridfsle2d(nfilegridfsle2d.c_str());
 
   if(verbose==1) cout << "Save grid in file: " << nfilegridfsle2d <<endl;
-  for(unsigned int q=0; q<qcore.size(); q++){
+  for(q=0; q<numcorepoints; q++){
       ofilegridfsle2d<<grid[q]<<endl;
   }
   ofilegridfsle2d.close();
@@ -376,7 +388,7 @@ int main(int argc, char **argv){
     cout << "Save fsle values in file: " << nfilefsle2d <<endl;
   }
   ofstream ofilefsle2d(nfilefsle2d.c_str());
-  for(unsigned int q=0; q<fsle.size(); q++){
+  for(q=0; q<numcorepoints; q++){
     ofilefsle2d<<fsle[q]<<endl;
   }
   ofilefsle2d.close();
@@ -436,35 +448,28 @@ int main(int argc, char **argv){
   vtkfile<<"# vtk DataFile Version 3.0"<<endl;
   vtkfile<<"Finite size Lyapunov exponent 2D"<<endl; 
   vtkfile<<"ASCII"<<endl;
-  vtkfile<<"DATASET STRUCTURED_POINTS"<< endl;
+  vtkfile<<"DATASET STRUCTURED_GRID"<< endl;
   vtkfile<<"DIMENSIONS "<< dimgrid.i-1 <<" "<< dimgrid.j-1 <<" "<< dimgrid.k+1 <<endl;
-  vtkfile<<"ORIGIN ";
-  vtkfile<<grid[qcore[0]].x-(intergrid.x/2.0)<<" ";
-  vtkfile<<grid[qcore[0]].y-(intergrid.y/2.0)<<" ";
-  vtkfile<<grid[qcore[0]].z-(intergrid.z/2.0) <<endl;
-  vtkfile<<"SPACING "<<intergrid.x<<" "<<intergrid.y<<" "<< -intergrid.z <<endl;
-  vtkfile<<"CELL_DATA "<<(dimgrid.i-2)*(dimgrid.j-2)*(dimgrid.k)<<endl;
+
+  vtkfile<<"P "<<(dimgrid.i-2)*(dimgrid.j-2)*(dimgrid.k)<<endl;
   vtkfile<<"SCALARS fslez double"<<endl;
   vtkfile<<"LOOKUP_TABLE default"<<endl;
-  for(unsigned int q=0; q<fsle.size(); q++) 
-    {
-      vtkfile<<fsle[q]<<endl;
-    }
+  for(q=0; q<numcorepoints; q++){
+    vtkfile<<fsle[q]<<endl;
+  }
   vtkfile<<"SCALARS qflag int"<<endl;
   vtkfile<<"LOOKUP_TABLE default"<<endl;
-  for(unsigned int q=0; q<qcore.size(); q++) 
-    {
-      vtkfile<<qflag[qcore[q]]<<endl;
-    }
-    vtkfile.close();
+  for(q=0; q<numcorepoints; q++){
+    vtkfile<<qflag[qcore[q]]<<endl;
+  }
+  vtkfile.close();
 
   if(verbose==1)  cout << "[Complete]" <<endl;
 
   return 0;
 }
 
-string numprintf(int ndigits, int ndecimals, double number)
-{
+string numprintf(int ndigits, int ndecimals, double number){
   ostringstream stream;// it needs to include <sstream>
   double factor=pow(10,ndecimals); // it needs to include <cmath>
   stream << fixed; //it needs to include <iostream>

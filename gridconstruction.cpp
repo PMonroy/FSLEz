@@ -15,7 +15,11 @@ vector<int> neighbors(vectorIJK dimension);
 int gridfsle2d(vector<vectorXYZ> *itracer, vectorIJK *dimension, vector<int> *neighbor, vectorXYZ domainmin, vectorXYZ intergrid, vectorXYZ domainmax){
 
   double x,y,z;
-  int i,j,k;
+
+  int i=0;
+  int j=0;
+  int k=0;
+
   int ntracers;
 
   // GRIDS POINTS
@@ -29,7 +33,7 @@ int gridfsle2d(vector<vectorXYZ> *itracer, vectorIJK *dimension, vector<int> *ne
   (*itracer).reserve(ntracers);
   
   for(z=domainmin.z,k=0; z<=domainmax.z; z+=intergrid.z,k++){
-    for(y=domainmin.y,j=0; y<=domainmax.y; y+=intergrid.x,j++){
+    for(y=domainmin.y,j=0; y<=domainmax.y; y+=intergrid.y,j++){
       for(x=domainmin.x,i=0; x<=domainmax.x; x+=intergrid.x,i++){
 	(*itracer).push_back(vectorXYZ(x,y,z));
       }
