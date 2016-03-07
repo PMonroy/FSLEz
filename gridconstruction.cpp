@@ -9,10 +9,7 @@ using namespace std;
 #include "vectorXYZ.hpp"
 #include "vectorIJK.hpp"
 
-// FUNCTIONS
-vector<int> neighbors(vectorIJK dimension);
-
-int gridfsle2d(vector<vectorXYZ> *itracer, vectorIJK *dimension, vector<int> *neighbor, vectorXYZ domainmin, vectorXYZ intergrid, vectorXYZ domainmax){
+int MakeRegularGrid(vector<vectorXYZ> *point, vectorIJK *dimension, vectorXYZ domainmin, vectorXYZ intergrid, vectorXYZ domainmax){
 
   double x,y,z;
 
@@ -20,32 +17,28 @@ int gridfsle2d(vector<vectorXYZ> *itracer, vectorIJK *dimension, vector<int> *ne
   int j=0;
   int k=0;
 
-  int ntracers;
+  int numpoints;
 
   // GRIDS POINTS
-  ntracers = (int)((domainmax.z-domainmin.z)/intergrid.z)+1;
-  ntracers *= (int)((domainmax.y-domainmin.y)/intergrid.y)+1;
-  ntracers *= (int)((domainmax.x-domainmin.x)/intergrid.x)+1;
-  
-  if(ntracers<1)
+  numpoints  = (int)((domainmax.z-domainmin.z)/intergrid.z)+1;
+  numpoints *= (int)((domainmax.y-domainmin.y)/intergrid.y)+1;
+  numpoints *= (int)((domainmax.x-domainmin.x)/intergrid.x)+1;
+ 
+  if(numpoints<1)
     return 1;
   
-  (*itracer).reserve(ntracers);
+  (*point).reserve(numpoints);
   
   for(z=domainmin.z,k=0; z<=domainmax.z; z+=intergrid.z,k++){
     for(y=domainmin.y,j=0; y<=domainmax.y; y+=intergrid.y,j++){
       for(x=domainmin.x,i=0; x<=domainmax.x; x+=intergrid.x,i++){
-	(*itracer).push_back(vectorXYZ(x,y,z));
+	(*point).push_back(vectorXYZ(x,y,z));
       }
     }
   }
 
   // DIMENSIONS
   *dimension=vectorIJK(i,j,k);
-
-  //NEIGHBORS
-  (*neighbor).reserve(6*ntracers);
-  *neighbor=neighbors(*dimension);
 
   return 0;
 }

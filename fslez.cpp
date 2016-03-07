@@ -1,4 +1,3 @@
-/* fslez.cpp*/
 #include <cstdio>
 #include <cstdlib>
 #include <iostream> // cout, endl...  
@@ -7,93 +6,97 @@
 #include <vector>
 #include <sstream>
 #include <iomanip> // setfill, setw
+#include <string>
 
 using namespace std;
 
-#include "readparameters.hpp"
+#include "rparameters.hpp"
 #include "gridconstruction.hpp" 
 #include "constants.hpp"
 #include "vflow.hpp" 
 #include "integration.hpp"
 
-// Maybe one day I use this:
-//int (*velocity)(double ,vectorXYZ , vectorXYZ* ); 
-
 string numprintf(int ndigits, int ndecimals, double number);
+struct fslezParameters {
+
+  const vectorXYZ domainmin;
+  const vectorXYZ domainmax;
+  const vectorXYZ intergrid;
+  const struct tm seeddate;
+  const double intstep;
+  const int tau;
+  const double deltamax;
+
+  // Define a constructor that will load stuff from a configuration file.
+  fslezParameters(const string & rtimeParamsFileName)
+  :domainmin(getVectorXYZParam(rtimeParamsFileName, "domainmin"))
+  ,domainmax(getVectorXYZParam(rtimeParamsFileName, "domainmax"))
+  ,intergrid(getVectorXYZParam(rtimeParamsFileName, "intergrid")) 
+  ,seeddate(getDateParam(rtimeParamsFileName, "seeddate")) 
+  ,intstep(getDoubleParam(rtimeParamsFileName, "intstep")) 
+  ,tau(getIntParam(rtimeParamsFileName, "tau"))
+  ,deltamax(getDoubleParam(rtimeParamsFileName, "deltamax"))
+{}
+};
 
 int main(int argc, char **argv){
 
-  /**********************************************
-   * READ COMAND LINE PARAMETERS
-   **********************************************/
+  /*********************************************************************************
+   * READ PARAMETERS FROM FILE
+   ********************************************************************************/
 
   string fnameparams;// File name that stores the parameters
-  if(verbose==1){//Verbose: reading command line parameters
-      cout << "Reading command line parameters:" <<endl;
-      cout << endl;
-    }
-  if(GetcmdlineParameters(argc, argv, &fnameparams)){//Get cmd parameters
-    cout << "[Fail]" <<endl;
+  if(GetcmdlineParameters(argc, argv, &fnameparams)){//Get cmd line parameters
+    cout << "Error getting parameters from file" <<endl;
     return 1;
   }
-  if(verbose==1){//Verbose: success reading cmd parameters
-      cout << " parameters file: " << fnameparams <<endl;
-      cout << " [Complete]" <<endl;
-      cout << endl;
-    }
+  const fslezParameters fslezParams(fnameparams);
 
-  /**********************************************
-   * READ PARAMETERS FROM FILE
-   **********************************************/
 
-  if(verbose==1){//Verbose: reading parameters from file
-    cout << "Reading parameters from file:"<< fnameparams <<endl;
-    }
-  if(GetfileParameters(fnameparams)){//Get parameters from file
-    cout << "[Fail]" <<endl;    
-    return 1;
-  }
-  if(verbose==1){//Verbose: success reading file parameters
-      cout << "Parameters: "<<endl; 
-      cout << " vfield = "<<vfield<<endl ;
-      cout << " domainmin = "<< domainmin<<endl;
-      cout << " intergrid = " <<intergrid<<endl;
-      cout << " domainmax = "<< domainmax<<endl;
-      cout << " seeddate = "<< seeddate.tm_mday<<"-"<<seeddate.tm_mon+1<<"-"<<seeddate.tm_year<<endl ;
-      cout << " intstep = "<<intstep<<endl ;
-      cout << " tau = "<<tau<<endl ;
-      cout << " deltamax = "<<deltamax<<endl ;
-      cout << " [Complete]" <<endl;
-      cout << endl;
-    }
-
-  /**********************************************
+#ifdef DEBUG
+  cout << "FSLEz Parameters from file ";
+  cout <<"\""<<fnameparams<<": "<<endl; 
+  cout << " domainmin = "<< fslezParams.domainmin<<endl;
+  cout << " intergrid = " <<fslezParams.intergrid<<endl;
+  cout << " domainmax = "<< fslezParams.domainmax<<endl;
+  cout << " seeddate = "<< fslezParams.seeddate.tm_mday<<"-";
+  cout<<fslezParams.seeddate.tm_mon+1<<"-";
+  cout<<fslezParams.seeddate.tm_year<<endl;
+  cout << " intstep = "<<fslezParams.intstep<<endl ;
+  cout << " tau = "<<fslezParams.tau<<endl ;
+  cout << " deltamax = "<<fslezParams.deltamax<<endl ;
+  cout << " [Complete]" <<endl;
+  cout << endl;
+#endif
+      
+  /********************************************************************************
    * GRID CONSTRUCTION
-   **********************************************/
+   ********************************************************************************/
 
   vector<vectorXYZ> grid;
   vectorIJK dimgrid;
   vector<int> neighbor;
-
-  if(verbose==1){//Verbose: grid construction 
-    cout << "Grid construction:"<<endl;
-  }  
-  if(gridfsle2d(&grid, &dimgrid, &neighbor, domainmin, intergrid, domainmax)){//Grid construction 
+  if(MakeRegularGrid(&grid, &dimgrid, 
+		     fslezParams.domainmin, 
+		     fslezParams.intergrid, 
+		     fslezParams.domainmax)){//Grid construction 
     cout << "[Fail]" << endl;
     return 1;
   }
-  if(verbose == 1){//Verbose: success grid construction
-    cout << "Grid parameters: "<<endl; 
-    cout << " num. nodes = "<< grid.size() <<endl;
-    cout << " dim(x) = "<< dimgrid.i <<endl;
-    cout << " dim(y) = "<< dimgrid.j <<endl;
-    cout << " dim(z) = "<< dimgrid.k <<endl;
-    cout << "[Complete]" << endl;
-    cout << endl;
-  }
-
   unsigned int numgridpoints=grid.size();
+
+  neighbor=neighbors(dimgrid);
   unsigned int numneighbors=neighbor.size();
+
+#ifdef DEBUG
+  cout << "Grid construction: "<<endl; 
+  cout << " num. nodes = "<< grid.size() <<endl;
+  cout << " dim(x) = "<< dimgrid.i <<endl;
+  cout << " dim(y) = "<< dimgrid.j <<endl;
+  cout << " dim(z) = "<< dimgrid.k <<endl;
+  cout << "[Complete]" << endl;
+  cout << endl;
+#endif
 
   /**********************************************
    * COMPUTE INITIAL SEPARATION
@@ -170,50 +173,58 @@ int main(int argc, char **argv){
   double tend;
   double h;
 
-  int ntime = abs(tau);
-  int ascnd = tau > 0;
-  time_t seedtime = mktime(&seeddate); // Convert date to time in seconds (UTC) 
+  int ntime = abs(fslezParams.tau);
+  int ascnd = fslezParams.tau > 0;
+  struct tm datebuff = fslezParams.seeddate; // Buffer var to avoid error "cast const tm* to tm*"
+  time_t seedtime = mktime(&datebuff); // Convert date to time in seconds (UTC) 
 
   if(ascnd){
     time_t initime = seedtime;
     inidate = gmtime(&initime);
     tstart = 0.0;
     tend = (double) ntime;
-    h=intstep;
+    h=fslezParams.intstep;
   }
   else{
     time_t initime = seedtime - ntime*secondsday;
     inidate = gmtime(&initime); 
     tend = 0.0;
     tstart = (double) ntime;
-    h=-1.0*intstep;
+    h=-1.0*fslezParams.intstep;
   }
 
   /**********************************************
    * LOAD VELOCITY FIELD
    **********************************************/
 
-  if(verbose==1){//Verbose: loading vel. grid
-    cout << "Loading velocity grid:" << endl;
-  }
-  if(loadvgrid(seeddate,vfield)!=0){//Load velocity grid
-      cout << "[Fail]" << endl;
+#ifdef DEBUG
+  cout<<"Loading velocity grid:"<<endl; //Verbose: loading vel. grid
+#endif
+
+  vectorXYZ meanvel(0.2,0.2,0.0);
+  if(LoadVGrid(fslezParams.seeddate,
+               fslezParams.domainmin,
+               fslezParams.domainmax, 
+               meanvel, 
+               abs(fslezParams.tau))!=0){//Load velocity grid
+      cout<<"[Fail]"<<endl;
       return 1;
   }
-  if(verbose == 1){//Success loading vel. grid
-    cout << "[Complete]" << endl;
-  }
 
-  if(verbose == 1){//Verbose: loading velocities from model 
-    cout << "Loading velocities from model:" << endl;
-  }
-  if(loadvflow(*inidate, ntime+2, vfield, domainmin, domainmax)!=0){// Load velocity field
+#ifdef DEBUG
+  cout<<"[Complete]" << endl;//Success loading vel. grid
+  cout<<"Loading velocities from model:" << endl;//Verbose: loading velocities from model 
+#endif
+
+  if(LoadVFlow(*inidate,ntime+2)!=0){// Load velocity field
     cout << "[Fail]"<< endl;
     return 1;
   }
-  if(verbose == 1){//Succes loading velocities
-    cout << "[Complete]"<<endl;
-  }
+
+#ifdef DEBUG//Succes loading velocities
+  cout << "[Complete]"<<endl;
+#endif
+
 
   /**********************************************
    * TIME LOOP
@@ -232,14 +243,15 @@ int main(int argc, char **argv){
   unsigned int step;
   double t;
 
-  if(verbose == 1){//Verbose: Response and exit time calc. 
-    cout << "Calculation of response and exit_time:" << endl;
-  }
+#ifdef DEBUG//Verbose: Response and exit time calc. 
+  cout << "Calculation of response and exit_time:" << endl;
+#endif
+
   for(t=tstart, step=0; ascnd==1?(t<tend):(t>=tend); t+=h,step++) {
 
-    if(verbose == 1){//Verbose: show the current step 
-      cout << "step=" << step << "(" <<(tend-tstart)/h <<")"<<endl;
-    }
+#ifdef DEBUG//Verbose: show the current step 
+    cout << "step=" << step << "(" <<(tend-tstart)/h <<")"<<endl;
+#endif
 
     /* Compute the position of tracer in time t=t+h*/
     for (q=0; q<numgridpoints; q++)
@@ -260,7 +272,7 @@ int main(int argc, char **argv){
 	   (q1!=-1 && qflag[q1]==1) ||
 	   (q3!=-1 && qflag[q3]==1) ||
 	   (q4!=-1 && qflag[q4]==1)){
-	  if(RK4(t, h, &tracer[q], getvflow, vfield)==1){
+	  if(RK4(t, h, &tracer[q], GetVFlow)==1){
 	    qflag[q]=-1; // q is a non-integrable grid point
 	    if(q0!=-1 && qflag[q0]!=-1) qflag[q0]=0;// We keep non-integrable neighbor grid points
 	    if(q1!=-1 && qflag[q1]!=-1) qflag[q1]=0;
@@ -318,7 +330,7 @@ int main(int argc, char **argv){
 	    }
 	  }
 	  
-	  if(lengthmax>deltamax){
+	  if(lengthmax>fslezParams.deltamax){
 	    qflag[q]=0;
 	    exit_time[q]=(step+1.0)*h;
 	    response[q]=lengthmax/ilength[p+dirmax];
@@ -326,9 +338,11 @@ int main(int argc, char **argv){
 	}
       }
   }
-  if(verbose==1){//Verbose: Success response and exit time calculation
-    cout << "[Complete]" << endl;
-  }
+
+  //free VFlow
+#ifdef DEBUG//Verbose: Success response and exit time calculation
+  cout << "[Complete]" << endl;
+#endif
 
   /**********************************************************
    * COMPUTE FINITE SIZE LYAPUNOV EXPONENT
@@ -344,114 +358,107 @@ int main(int argc, char **argv){
 
   // Save fslez grid in a file
   string nfilegridfsle2d = 
-    "fslez_dmin" + numprintf(4,0,domainmin.x) +
-    "_"          + numprintf(4,0,domainmin.y) +
-    "_"          + numprintf(4,0,domainmin.z) +
-    "_dmax"      + numprintf(4,0,domainmax.x) +
-    "_"          + numprintf(4,0,domainmax.y) +
-    "_"          + numprintf(4,0,domainmax.z) +
-    "_res"       + numprintf(4,3,intergrid.x) +
-    "_"          + numprintf(4,3,intergrid.y) +
-    "_"          + numprintf(4,3,intergrid.z) +
-    ".grid";
+    "fslez_lon"    + numprintf(4,0,fslezParams.domainmin.x) 
+    + numprintf(4,0,fslezParams.domainmax.x)
+    + numprintf(4,3,fslezParams.intergrid.x)
+    + "_lat"       + numprintf(4,0,fslezParams.domainmin.y)
+    + numprintf(4,0,fslezParams.domainmax.y)
+    + numprintf(4,3,fslezParams.intergrid.y)
+    + "_dpt"       + numprintf(4,0,fslezParams.domainmin.z)
+    + numprintf(4,0,fslezParams.domainmax.z)
+    + numprintf(4,0,fslezParams.intergrid.z)
+    + ".grid";
   ofstream ofilegridfsle2d(nfilegridfsle2d.c_str());
 
-  if(verbose==1) cout << "Save grid in file: " << nfilegridfsle2d <<endl;
+#ifdef DEBUG 
+  cout << "Save grid in file: " << nfilegridfsle2d <<endl;
+#endif
+
   for(q=0; q<numcorepoints; q++){
       ofilegridfsle2d<<grid[q]<<endl;
   }
   ofilegridfsle2d.close();
 
-  if(verbose==1) cout << "[Complete]" << endl;
+#ifdef DEBUG
+  cout << "[Complete]" << endl;
+#endif
 
   // save fslez values in a file
   string nfilefsle2d = 
-    "fslez_vm"   + numprintf(1,0,vfield) +
-    "_date"       + numprintf(2,0,seeddate.tm_year) + 
-    "-"           + numprintf(2,0,seeddate.tm_mon+1)+
-    "-"           + numprintf(2,0,seeddate.tm_mday) +
-    "-dmin"       + numprintf(4,0,domainmin.x) +
-    "_"           + numprintf(4,0,domainmin.y) +
-    "_"           + numprintf(4,0,domainmin.z) +
-    "_dmax"       + numprintf(4,0,domainmax.x) +
-    "_"           + numprintf(4,0,domainmax.y) +
-    "_"           + numprintf(4,0,domainmax.z) +
-    "_res"        + numprintf(4,3,intergrid.x) +
-    "_"           + numprintf(4,3,intergrid.y) +
-    "_"           + numprintf(3,0,intergrid.z) +
-    "_tau"        + numprintf(4,0,tau) +
-    "_h"          + numprintf(4,3,intstep) +
-    "_dmax"       + numprintf(3,0, deltamax/1000.0) +
-    ".data";
+    "fslez_lon"    + numprintf(4,0,fslezParams.domainmin.x) 
+    + numprintf(4,0,fslezParams.domainmax.x)
+    + numprintf(4,3,fslezParams.intergrid.x)
+    + "_lat"       + numprintf(4,0,fslezParams.domainmin.y)
+    + numprintf(4,0,fslezParams.domainmax.y)
+    + numprintf(4,3,fslezParams.intergrid.y)
+    + "_dpt"       + numprintf(4,0,fslezParams.domainmin.z)
+    + numprintf(4,0,fslezParams.domainmax.z)
+    + numprintf(4,0,fslezParams.intergrid.z)
+    + "_dl"        + numprintf(3,0,fslezParams.deltamax/1000.0)
+    + "_ts"        + numprintf(4,0,fslezParams.intstep) 
+    + "_t"         + numprintf(4,0,fslezParams.tau) 
+    + "_d"         + numprintf(2,0,fslezParams.seeddate.tm_mday)
+    + numprintf(2,0,fslezParams.seeddate.tm_mon+1)
+    + numprintf(2,0,fslezParams.seeddate.tm_year)
+    + ".data";
 
-  if(verbose==1){// Verbose: Save fsle values in ascii file
-    cout << "Save fsle values in file: " << nfilefsle2d <<endl;
-  }
+#ifdef DEBUG
+  // Verbose: Save fsle values in ascii file
+  cout << "Save fsle values in file: " << nfilefsle2d <<endl;
+#endif
+
   ofstream ofilefsle2d(nfilefsle2d.c_str());
   for(q=0; q<numcorepoints; q++){
     ofilefsle2d<<fsle[q]<<endl;
   }
   ofilefsle2d.close();
-  if(verbose==1){// Verbose: success file saved  
-    cout << "[Complete]" << endl;
-  }
+
+#ifdef DEBUG
+  // Verbose: success file saved  
+  cout << "[Complete]" << endl;
+#endif
 
  /**********************************************************
    * WRITING RESULT IN VTK FILE
    **********************************************************/
 
   string vtkfilefsle2d = 
-    "fslez_vm"   + numprintf(1,0,vfield) +
-    "_date"       + numprintf(2,0,seeddate.tm_year) + 
-    "-"           + numprintf(2,0,seeddate.tm_mon+1)+
-    "-"           + numprintf(2,0,seeddate.tm_mday) +
-    "-dmin"       + numprintf(4,0,domainmin.x) +
-    "_"           + numprintf(4,0,domainmin.y) +
-    "_"           + numprintf(4,0,domainmin.z) +
-    "_dmax"       + numprintf(4,0,domainmax.x) +
-    "_"           + numprintf(4,0,domainmax.y) +
-    "_"           + numprintf(4,0,domainmax.z) +
-    "_res"        + numprintf(4,3,intergrid.x) +
-    "_"           + numprintf(4,3,intergrid.y) +
-    "_"           + numprintf(3,0,intergrid.z) +
-    "_tau"        + numprintf(4,0,tau) +
-    "_h"          + numprintf(4,3,intstep) +
-    "_dmax"       + numprintf(3,0, deltamax/1000.0) +
-    ".vtk";
+    "fslez_lon"       + numprintf(4,0,fslezParams.domainmin.x) 
+    + numprintf(4,0,fslezParams.domainmax.x)
+    + numprintf(4,3,fslezParams.intergrid.x)
+    + "_lat"       + numprintf(4,0,fslezParams.domainmin.y)
+    + numprintf(4,0,fslezParams.domainmax.y)
+    + numprintf(4,3,fslezParams.intergrid.y)
+    + "_dpt"       + numprintf(4,0,fslezParams.domainmin.z)
+    + numprintf(4,0,fslezParams.domainmax.z)
+    + numprintf(4,0,fslezParams.intergrid.z)
+    + "_dl"        + numprintf(3,0,fslezParams.deltamax/1000.0)
+    + "_ts"        + numprintf(4,0,fslezParams.intstep) 
+    + "_t"         + numprintf(4,0,fslezParams.tau) 
+    + "_d"         + numprintf(2,0,fslezParams.seeddate.tm_mday)
+    + numprintf(2,0,fslezParams.seeddate.tm_mon+1)
+    + numprintf(2,0,fslezParams.seeddate.tm_year)
+    + ".vtk";
 
-  if(verbose==1)  cout << "Save ftle field in vtk file: " << vtkfilefsle2d <<endl;
-
-  /*ofstream vtkfile(vtkfilefsle2d.c_str());
-  vtkfile<<"# vtk DataFile Version 3.0"<<endl;
-  vtkfile<<"Finite size Lyapunov exponent 2D"<<endl; 
-  vtkfile<<"ASCII"<<endl;
-  vtkfile<<"DATASET STRUCTURED_POINTS"<< endl;
-  vtkfile<<"DIMENSIONS "<< ni-2 <<" "<< nj-2 <<" "<< 1 <<endl;
-  vtkfile<<"ORIGIN "<<grid[qcore[0]].x<<" "<<grid[qcore[0]].y<<" "<< 0.0 <<endl;
-  vtkfile<<"SPACING "<<intergrid.x<<" "<<intergrid.y<<" "<< 0.0 <<endl;
-  vtkfile<<"POINT_DATA "<<(ni-2)*(nj-2)<<endl;
-  vtkfile<<"SCALARS fsle2d double"<<endl;
-  vtkfile<<"LOOKUP_TABLE default"<<endl;
-  for(unsigned int q=0; q<fsle.size(); q++) 
-    {
-      vtkfile<<fsle[q]<<endl;
-    }
-  vtkfile<<"SCALARS qflag int"<<endl;
-  vtkfile<<"LOOKUP_TABLE default"<<endl;
-  for(unsigned int q=0; q<qcore.size(); q++) 
-    {
-      vtkfile<<qflag[qcore[q]]<<endl;
-    }
-    vtkfile.close();*/
+#ifdef DEBUG
+  cout << "Save ftle field in vtk file: " << vtkfilefsle2d <<endl;
+#endif
 
   ofstream vtkfile(vtkfilefsle2d.c_str());
   vtkfile<<"# vtk DataFile Version 3.0"<<endl;
-  vtkfile<<"Finite size Lyapunov exponent 2D"<<endl; 
+  vtkfile<<"Finite size Lyapunov exponent 3D"<<endl; 
   vtkfile<<"ASCII"<<endl;
-  vtkfile<<"DATASET STRUCTURED_GRID"<< endl;
+  vtkfile<<"DATASET STRUCTURED_POINTS"<< endl;
   vtkfile<<"DIMENSIONS "<< dimgrid.i-1 <<" "<< dimgrid.j-1 <<" "<< dimgrid.k+1 <<endl;
-
-  vtkfile<<"P "<<(dimgrid.i-2)*(dimgrid.j-2)*(dimgrid.k)<<endl;
+  vtkfile<<"ORIGIN ";
+  vtkfile<<grid[qcore[0]].x-(fslezParams.intergrid.x/2.0)<<" ";
+  vtkfile<<grid[qcore[0]].y-(fslezParams.intergrid.y/2.0)<<" ";
+  vtkfile<<grid[qcore[0]].z-(fslezParams.intergrid.z/2.0)<<" "; 
+  vtkfile<<"SPACING ";
+  vtkfile<<fslezParams.intergrid.x<<" ";
+  vtkfile<<fslezParams.intergrid.y<<" ";
+  vtkfile<<-fslezParams.intergrid.z <<endl;
+  vtkfile<<"CELL_DATA "<<(dimgrid.i-2)*(dimgrid.j-2)*(dimgrid.k)<<endl;
   vtkfile<<"SCALARS fslez double"<<endl;
   vtkfile<<"LOOKUP_TABLE default"<<endl;
   for(q=0; q<numcorepoints; q++){
@@ -464,7 +471,9 @@ int main(int argc, char **argv){
   }
   vtkfile.close();
 
-  if(verbose==1)  cout << "[Complete]" <<endl;
+#ifdef DEBUG
+  cout << "[Complete]" <<endl;
+#endif
 
   return 0;
 }

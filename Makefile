@@ -1,38 +1,59 @@
-#CC_MONO=g++ -ggdb -Wall -mcmodel=medium #TO DEBUG
-CC_MONO=g++ -O2 -Wall -mcmodel=medium #TO OPTIMIZE
+CPP=g++
+CPPFLAGS=-O2 -Wall
 
-CC=$(CC_MONO)
-
-LIBS= -lnetcdf_c++
+LDFLAGS= -lnetcdf_c++ 
 RM=rm -rf
 
-all: fslez
+DESTDIR=$(HOME)/bin
 
-readparameters.o: readparameters.cpp readparameters.hpp
-	$(CC) -c readparameters.cpp 
+common_src=  constants.cpp vflow.cpp vectorXYZ.cpp vectorIJK.cpp rparameters.cpp gridconstruction.cpp constants.cpp integration.cpp
+common_obj=$(common_src:.cpp=.o) 
+common_dep=$(common_obj:.o=.d)  # one dependency file for each source
 
-vectorXYZ.o: vectorXYZ.cpp vectorXYZ.hpp
-	$(CC) -c vectorXYZ.cpp 
+#RTIME 
+rtime_src= rtime.cpp
+rtime_obj=$(rtime_src:.cpp=.o) 
+rtime_dep=$(rtime_obj:.o=.d)  # one dependency file for each source
 
-vectorIJK.o: vectorIJK.cpp vectorIJK.hpp
-	$(CC) -c vectorIJK.cpp 
+#FSLEZ
+fslez_src= fslez.cpp
+fslez_obj=$(fslez_src:.cpp=.o) 
+fslez_dep=$(fslez_obj:.o=.d)  # one dependency file for each source
 
-constants.o: constants.cpp constants.hpp
-	$(CC) -c constants.cpp 
+.PHONY: all rtime fslez
 
-gridconstruction.o: gridconstruction.cpp gridconstruction.hpp vectorXYZ.o vectorIJK.o
-	$(CC) -c gridconstruction.cpp
+all: rtime fslez
 
-integration.o: integration.cpp integration.hpp vectorXYZ.o constants.o
-	$(CC) -c integration.cpp
+rtime: $(common_obj) $(rtime_obj)
+	$(CPP) -o $@ $^ $(LDFLAGS)
 
-vflow.o: vflow.cpp vflow.hpp vectorXYZ.o constants.o
-	$(CC) -c vflow.cpp -lnetcdf_c++
+fslez: $(common_obj) $(fslez_obj)
+	$(CPP) -o $@ $^ $(LDFLAGS)
 
-fslez.o: fslez.cpp
-	$(CC) -c fslez.cpp 
+-include $(common_dep) # include all dep files in makefile
+-include $(rtime_dep) 
+-include $(fselz_dep) 
 
-fslez: fslez.o readparameters.o gridconstruction.o vflow.o constants.o vectorXYZ.o vectorIJK.o integration.o
-	$(CC)  fslez.o readparameters.o gridconstruction.o vflow.o integration.o constants.o vectorXYZ.o vectorIJK.o -o fslez -lnetcdf_c++
+
+%.d: %.cpp 	# rule to generate a dep file by using the g++ prepocesor
+	$(CPP) $(CPPFLAGS) -MM -MT $(@:.d=.o) $< -MF $@
+
+%.o: %.cpp
+	$(CPP) $(CPPFLAGS) -o $@ -c $<
+
+.PHONY: debug rtime fslez
+debug: CPPFLAGS+= -DDEBUG -ggdb # debug with gdb
+debug: rtime fslez
+
+.PHONY: clean
 clean:
-	$(RM) *.o 
+	$(RM) $(common_obj) $(rtime_obj) $(fslez_obj) *.d *~ *# rtime
+
+.PHONY: install
+install: rtime fslez
+	install $^ $(DESTDIR)
+
+# Trick to run comfortably in emacs (emulating compile command)
+#ARGS="--default"
+#run:	# For include other args use -> make run ARGS="-arg1 -arg2=foo" 
+#	rtime $(ARGS)

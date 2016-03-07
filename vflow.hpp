@@ -3,10 +3,16 @@
 
 #include <ctime>
 #include "vectorXYZ.hpp"
+#include "vectorIJK.hpp"
 
-int loadvgrid(struct tm rdate,int vfield);
-int loadvflow(struct tm seeddate, int ntime, int vfield, vectorXYZ domainmin, vectorXYZ domainmax);
 
-int getvflow(double t,vectorXYZ point, vectorXYZ *vint, int vfield);
+
+// Functions
+int LoadVGrid(struct tm rdate, vectorXYZ domainmin, vectorXYZ domainmax, vectorXYZ meanvel, double duration);
+int LoadVFlow(struct tm seeddate, int ntime);
+void FreeVFlow(unsigned int ntime);
+
+int GetVFlow(double t,vectorXYZ point, vectorXYZ *vint);
+int GetVPartialDeriv(double t,vectorXYZ point, vectorIJK dir, vectorXYZ *dvdr);
 
 #endif

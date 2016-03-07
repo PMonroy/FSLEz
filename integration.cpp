@@ -12,7 +12,7 @@ using namespace std;
 #include "vflow.hpp" // Functions to read velocities 
 #include "constants.hpp"
 
-int RK4(double t0, double intstep, vectorXYZ *point, int (*velocity)(double ,vectorXYZ , vectorXYZ* , int ), int vfield)
+int RK4(double t0, double intstep, vectorXYZ *point, int (*velocity)(double ,vectorXYZ , vectorXYZ* ))
 {
   vectorXYZ point2,point3,point4;
   vectorXYZ v1,v2,v3,v4;
@@ -26,7 +26,7 @@ int RK4(double t0, double intstep, vectorXYZ *point, int (*velocity)(double ,vec
   tstep6 = intstep/6.0;
   
   /* Calculate V1: */
-  if(velocity(t0,*point, &v1, vfield))
+  if(velocity(t0,*point, &v1))
     return 1;
   h = rearth * cos(rads*(point->y));
   v1.x = degrees*(v1.x / h );
@@ -37,7 +37,7 @@ int RK4(double t0, double intstep, vectorXYZ *point, int (*velocity)(double ,vec
   t = t0 + tstep2;
   point2 = *point + (tstep2 * v1);
 
-  if(velocity(t,point2, &v2, vfield))
+  if(velocity(t,point2, &v2))
     return 1;
 
   h = rearth * cos(rads*(point2.y));
@@ -48,7 +48,7 @@ int RK4(double t0, double intstep, vectorXYZ *point, int (*velocity)(double ,vec
   /* Calculate V3: */
   point3 = *point + (tstep2 * v2);
 
-  if(velocity(t,point3, &v3, vfield))
+  if(velocity(t,point3, &v3))
     return 1;
 
   h = rearth * cos(rads*(point3.y));
@@ -60,7 +60,7 @@ int RK4(double t0, double intstep, vectorXYZ *point, int (*velocity)(double ,vec
   t = t0 + intstep;
   point4 = *point + (intstep * v3);
   
-  if(velocity(t,point4, &v4, vfield))
+  if(velocity(t,point4, &v4))
     return 1;
 
   h = rearth * cos(rads*(point4.y));
