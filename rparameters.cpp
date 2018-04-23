@@ -184,12 +184,13 @@ struct tm getDateParam(const string & paramsFileName, const string & key) {
 }
 
 
-int GetcmdlineParameters(int narg,char ** cmdarg, string *fnameparams){
+int GetcmdlineParameters(int narg, char ** cmdarg, string *fnameparams, int *namefileflag){
 
   int opt;
   int fnameparamsflag=0; // File parameters flag option
+  *namefileflag=0;
 
-  while((opt = getopt(narg, cmdarg, "f:h")) != -1){
+  while((opt = getopt(narg, cmdarg, "f:hn ")) != -1){
     switch(opt){
     case 'f':
       fnameparamsflag++;
@@ -198,9 +199,13 @@ int GetcmdlineParameters(int narg,char ** cmdarg, string *fnameparams){
       else 
 	return 1;
       break;
+    case 'n':
+      *namefileflag=1;
+      break;
     case 'h':
       cout<<"Usage: "<< cmdarg[0] <<" [OPTIONS]"<<endl;
       cout<<" -f [file]      Where [file] is the input file parmeters (mandatory)" <<endl;
+      cout<<" -n             Output file names are based on input file name (optional)" <<endl;
       cout<<" -h             Print this help and exit (optional)"<<endl;
       return 1;
 

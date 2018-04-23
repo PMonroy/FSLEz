@@ -26,6 +26,7 @@ struct rtimeParameters {
   const struct tm seeddate;
   const double intstep;
   const int tau;
+  const double fthreshold;
 
   // Define a constructor that will load stuff from a configuration file.
   rtimeParameters(const string & rtimeParamsFileName)
@@ -35,6 +36,7 @@ struct rtimeParameters {
   ,seeddate(getDateParam(rtimeParamsFileName, "seeddate")) 
   ,intstep(getDoubleParam(rtimeParamsFileName, "intstep")) 
   ,tau(getIntParam(rtimeParamsFileName, "tau"))
+  ,fthreshold(getDoubleParam(rtimeParamsFileName, "fthreshold"))
 {}
 };
 
@@ -45,7 +47,9 @@ int main(int argc, char **argv){
    ********************************************************************************/
   
   string fnameparams;// File name that stores the parameters
-  if(GetcmdlineParameters(argc, argv, &fnameparams)){//Get cmd line parameters
+  int namefileflag;
+
+  if(GetcmdlineParameters(argc, argv, &fnameparams, &namefileflag)){//Get cmd line parameters
     cout << "Error getting parameters from file" <<endl;
     return 1;
   }
@@ -62,6 +66,7 @@ int main(int argc, char **argv){
   cout<<rtimeParams.seeddate.tm_year<<endl;
   cout<<" intstep = "<<rtimeParams.intstep<<endl;
   cout<<" tau = "<<rtimeParams.tau<<endl;
+  cout<<" fthreshold = "<<rtimeParams.fthreshold<<endl;
   cout<<" [Complete]"<<endl;
   cout<< endl;
 #endif
@@ -163,22 +168,84 @@ int main(int argc, char **argv){
   vector <vectorXYZ > dvdx;
   vector <vectorXYZ > dvdy;
 
-  vector <double> ow;
-  vector <double> rtime;
+  vector<double> ow(numgridpoints,0.0);
+  vector<double> owt0(numgridpoints,0.0);
+  vector<double> std_owt0(dimgrid.k,0.0);
+  vector<double> owthreshold(dimgrid.k,0.0);
+  vector <double> rtime(numgridpoints,0.0);
   
   vectorIJK dirx(1,0,0),diry(0,1,0);
 
   dvdx.resize(numgridpoints);
   dvdy.resize(numgridpoints);
-  ow.resize(numgridpoints);
-  rtime.resize(numgridpoints);
+
 
   unsigned int step;
   double t;
   unsigned int q;
 
+
 #ifdef DEBUG//Verbose: Response and exit time calc. 
-  cout << "Calculation of retention time:" << endl;
+  cout << "Calculation of initial Okubo Weiss:" << endl;
+#endif
+
+  /* Compute the intial OKUBO-WEISS */
+  
+  for(q=0; q<numgridpoints; q++){
+    
+    if(GetVPartialDeriv(tstart,tracer[q], dirx, &dvdx[q])==1){
+	qflag[q]=-1;
+	continue;
+    }
+    if(GetVPartialDeriv(tstart,tracer[q], diry, &dvdy[q])==1){
+      qflag[q]=-1;
+      continue;
+    }
+    
+    owt0[q]=(dvdx[q].x-dvdy[q].y)*(dvdx[q].x-dvdy[q].y)+4.0*(dvdy[q].x*dvdx[q].y);
+  }
+  
+  /* COMPUTE:Threshold, compute standard deviation OW at initial date */
+  unsigned int nlayer=dimgrid.i*dimgrid.j;
+
+  double sum_owt0=0.0, sum2_owt0=0.0;
+  double nsize_owt0=0.0;
+
+  unsigned int k;
+  unsigned int dimk=dimgrid.k;
+
+  for(k=0; k<dimk; k++){
+    sum_owt0=0.0;
+    sum2_owt0=0.0;
+    nsize_owt0=0.0;
+    for(q=k*nlayer; q<(k+1)*nlayer; q++){
+      if(qflag[q]==-1){//Skip the rest of the loop if q is a non-integrable point
+	continue;
+      }
+      nsize_owt0+=1.0;
+      sum_owt0+=owt0[q];
+      sum2_owt0+=(owt0[q]*owt0[q]);
+    }
+    std_owt0[k]=sqrt((sum2_owt0/nsize_owt0)-((sum_owt0/nsize_owt0)*(sum_owt0/nsize_owt0)));
+    owthreshold[k]=rtimeParams.fthreshold*std_owt0[k];
+
+  }
+
+
+  for(q=0; q<numgridpoints; q++){
+
+    if(qflag[q]==-1){//Skip the rest of the loop if q is a non-integrable point 
+      continue;
+    }
+    k=(unsigned int)(q/nlayer);
+    if(owt0[q]>=owthreshold[k]){
+      rtime[q]=0.0;
+      qflag[q]=0;
+    }
+  }
+
+#ifdef DEBUG//Verbose: Response and exit time calc. 
+  cout << "Calculation of eddy retention time:" << endl;
 #endif
 
   for(t=tstart, step=0; ascnd==1?(t<tend):(t>=tend); t+=h,step++){
@@ -215,8 +282,9 @@ int main(int argc, char **argv){
       }
       
 
-      ow[q]=(dvdx[q].x-dvdy[q].y)*(dvdx[q].x -dvdy[q].y)+4.0*(dvdy[q].x*dvdx[q].y);//Okubo-Weiss Parameters
-      if(ow[q]>=0.0){
+      ow[q]=(dvdx[q].x-dvdy[q].y)*(dvdx[q].x-dvdy[q].y)+4.0*(dvdy[q].x*dvdx[q].y);//Okubo-Weiss Parameters
+      k=(unsigned int)(q/nlayer);
+      if(ow[q]>=owthreshold[k]){
 	rtime[q]=step*h;
 	qflag[q]=0;
       }
@@ -230,58 +298,6 @@ int main(int argc, char **argv){
     cout << "[Complete]" << endl;
 #endif
 
-
-  /**********************************************************
-   * METRICS : must be moved to a separated file!!!!!!!!!!!!           
-   **********************************************************/
-  string nmeandpt = 
-    "rtime_date"  + numprintf(2,0,rtimeParams.seeddate.tm_year) + 
-    "-"           + numprintf(2,0,rtimeParams.seeddate.tm_mon+1)+
-    "-"           + numprintf(2,0,rtimeParams.seeddate.tm_mday) +
-    "_dmin"       + numprintf(4,0,rtimeParams.domainmin.x) +
-    "_"           + numprintf(4,0,rtimeParams.domainmin.y) +
-    "_"           + numprintf(4,0,rtimeParams.domainmin.z) +
-    "_dmax"       + numprintf(4,0,rtimeParams.domainmax.x) +
-    "_"           + numprintf(4,0,rtimeParams.domainmax.y) +
-    "_"           + numprintf(4,0,rtimeParams.domainmax.z) +
-    "_res"        + numprintf(4,3,rtimeParams.intergrid.x) +
-    "_"           + numprintf(4,3,rtimeParams.intergrid.y) +
-    "_"           + numprintf(3,0,rtimeParams.intergrid.z) +
-    "_tau"        + numprintf(4,0,rtimeParams.tau) +
-    "_h"          + numprintf(4,3,rtimeParams.intstep) +
-    ".meandpt";
-
-  #ifdef DEBUG// Verbose: Save fsle values in ascii file
-    cout << "Save mean values in file: " << nmeandpt <<endl;
-  #endif
-
-  ofstream ofilemeandpt(nmeandpt.c_str());
-
-  unsigned int idxdepth;
-  
-  double sumdepth,sum2depth;
-  double meandepth,mean2depth;
-  double variancedepth;
-
-  for(idxdepth=0; idxdepth<(unsigned int) dimgrid.k; idxdepth++)
-    {
-      sumdepth=0.0;
-      sum2depth=0.0;
-      for(q=idxdepth*dimgrid.i*dimgrid.j; q<(idxdepth+1)*dimgrid.i*dimgrid.j; q++){
-
-	sumdepth+=rtime[q];
-	sum2depth+=(rtime[q]*rtime[q]);
-      }
-      meandepth=sumdepth/double(dimgrid.i*dimgrid.j);
-      mean2depth=sum2depth/double(dimgrid.i*dimgrid.j);
-
-      variancedepth=mean2depth-(meandepth*meandepth); 
-      ofilemeandpt << grid[idxdepth*dimgrid.i*dimgrid.j].z << " ";
-      ofilemeandpt << meandepth << " ";
-      ofilemeandpt << variancedepth << endl;
-      //cout << grid[idxdepth*dimgrid.i*dimgrid.j].z << " " << meandepth << endl;
-    }
-  ofilemeandpt.close();
 
   /**********************************************************
    * WRITE RESULTS
@@ -299,46 +315,68 @@ int main(int argc, char **argv){
     + numprintf(4,0,rtimeParams.domainmax.z)
     + numprintf(4,0,rtimeParams.intergrid.z)
     + ".grid";
-   ofstream ofilegridrtime(nfilegridrtime.c_str());
 
   #ifdef DEBUG
   cout<<"Saving grid in file: " << nfilegridrtime <<endl;
   #endif
 
-  for(q=0; q<numgridpoints; q++){
+  if(!ifstream(nfilegridrtime.c_str())){ // Check if file exists
+    ofstream ofilegridrtime(nfilegridrtime.c_str());
+    for(q=0; q<numgridpoints; q++){
       ofilegridrtime<<grid[q]<<endl;
+    }
+    ofilegridrtime.close();
   }
-  ofilegridrtime.close();
 
 #ifdef DEBUG
   cout << "[Complete]" << endl;
 #endif
 
-  // save fslez values in a file
-  string nfilertime = 
-     "rtime_lon"    + numprintf(4,0,rtimeParams.domainmin.x) 
-    + numprintf(4,0,rtimeParams.domainmax.x)
-    + numprintf(4,3,rtimeParams.intergrid.x)
-    + "_lat"       + numprintf(4,0,rtimeParams.domainmin.y)
-    + numprintf(4,0,rtimeParams.domainmax.y)
-    + numprintf(4,3,rtimeParams.intergrid.y)
-    + "_dpt"       + numprintf(4,0,rtimeParams.domainmin.z)
-    + numprintf(4,0,rtimeParams.domainmax.z)
-    + numprintf(4,0,rtimeParams.intergrid.z)
-    + "_ts"        + numprintf(4,0,rtimeParams.intstep) 
-    + "_t"         + numprintf(4,0,rtimeParams.tau) 
-    + "_d"         + numprintf(2,0,rtimeParams.seeddate.tm_mday)
-    + numprintf(2,0,rtimeParams.seeddate.tm_mon+1)
-    + numprintf(2,0,rtimeParams.seeddate.tm_year)
-    + ".data";
+  // save rtime values in a file
+  
+  string rawname;
+  
+  if(namefileflag==1){
+    size_t lastdot=fnameparams.find_last_of(".");
+    if(lastdot==string::npos){
+      rawname="rtime3d_"+fnameparams;
+    }
+    else{
+      rawname="rtime3d_"+fnameparams.substr(0,lastdot);
+    }
+  }
+  else{
+    rawname= "rtime3d_lon" + numprintf(4,0,rtimeParams.domainmin.x) 
+      + numprintf(4,0,rtimeParams.domainmax.x)
+      + numprintf(4,3,rtimeParams.intergrid.x)
+      + "_lat"       + numprintf(4,0,rtimeParams.domainmin.y)
+      + numprintf(4,0,rtimeParams.domainmax.y)
+      + numprintf(4,3,rtimeParams.intergrid.y)
+      + "_dpt"       + numprintf(4,0,rtimeParams.domainmin.z)
+      + numprintf(4,0,rtimeParams.domainmax.z)
+      + numprintf(4,0,rtimeParams.intergrid.z)
+      + "_h"        + numprintf(4,3,rtimeParams.intstep) 
+      + "_t"         + numprintf(4,0,rtimeParams.tau)
+      + "_f"         + numprintf(3,1,rtimeParams.fthreshold) 
+      + "_d"         + numprintf(2,0,rtimeParams.seeddate.tm_mday)
+      + numprintf(2,0,rtimeParams.seeddate.tm_mon+1)
+      + numprintf(2,0,rtimeParams.seeddate.tm_year);
+  }
+
+  string nfilertime = rawname + ".data";
 
 #ifdef DEBUG// Verbose: Save fsle values in ascii file
-  cout << "Save rtime values in file: " << nfilertime <<endl;
+  cout << "Save rtime/owt0/qflag values in file: " << nfilertime <<endl;
 #endif
 
   ofstream ofilertime(nfilertime.c_str());
   for(q=0; q<numgridpoints; q++){
-    ofilertime<<rtime[q]<<endl;
+    k=(unsigned int)(q/nlayer);
+    ofilertime<<rtime[q]<<" ";
+    ofilertime<<owt0[q]<<" ";
+    ofilertime<<qflag[q]<<" ";
+    ofilertime<<std_owt0[k]<<" ";
+    ofilertime<<owthreshold[k]<<endl;
   }
   ofilertime.close();
 
@@ -351,22 +389,7 @@ int main(int argc, char **argv){
    * WRITING RESULT IN VTK FILE
    **********************************************************/
 
-  string vtkfilertime = 
-    "rtime_lon"    + numprintf(4,0,rtimeParams.domainmin.x) 
-    + numprintf(4,0,rtimeParams.domainmax.x)
-    + numprintf(4,3,rtimeParams.intergrid.x)
-    + "_lat"       + numprintf(4,0,rtimeParams.domainmin.y)
-    + numprintf(4,0,rtimeParams.domainmax.y)
-    + numprintf(4,3,rtimeParams.intergrid.y)
-    + "_dpt"       + numprintf(4,0,rtimeParams.domainmin.z)
-    + numprintf(4,0,rtimeParams.domainmax.z)
-    + numprintf(4,0,rtimeParams.intergrid.z)
-    + "_ts"        + numprintf(4,0,rtimeParams.intstep) 
-    + "_t"         + numprintf(4,0,rtimeParams.tau) 
-    + "_d"         + numprintf(2,0,rtimeParams.seeddate.tm_mday)
-    + numprintf(2,0,rtimeParams.seeddate.tm_mon+1)
-    + numprintf(2,0,rtimeParams.seeddate.tm_year)
-    + ".data";
+  string vtkfilertime = rawname + ".vtk";
 
 #ifdef DEBUG
   cout << "Save rtime field in vtk file: " << vtkfilertime <<endl;
@@ -379,7 +402,7 @@ int main(int argc, char **argv){
   vtkfile<<"DATASET STRUCTURED_GRID"<< endl;
   vtkfile<<"DIMENSIONS "<< dimgrid.i <<" "<< dimgrid.j <<" "<< dimgrid.k<<endl;
   vtkfile<<"POINTS "<< numgridpoints <<" double"<<endl;
-  vectorXYZ scalegrid(1.0,1.0,-1.0);
+  vectorXYZ scalegrid(1.0,1.0,-0.01);
   for(q=0; q<numgridpoints; q++){
     vtkfile<<scalegrid*grid[q]<<endl;
   }  
@@ -388,6 +411,11 @@ int main(int argc, char **argv){
   vtkfile<<"LOOKUP_TABLE default"<<endl;
   for(q=0; q<numgridpoints; q++){
     vtkfile<<rtime[q]<<endl;
+  }
+  vtkfile<<"SCALARS owt0 double"<<endl;
+  vtkfile<<"LOOKUP_TABLE default"<<endl;
+  for(q=0; q<numgridpoints; q++){
+    vtkfile<<owt0[q]<<endl;
   }
   vtkfile<<"SCALARS qflag int"<<endl;
   vtkfile<<"LOOKUP_TABLE default"<<endl;

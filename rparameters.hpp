@@ -7,8 +7,7 @@
 using namespace std;
 #include "vectorXYZ.hpp"
 
-int GetcmdlineParameters(int narg,char ** cmdarg, string *fnameparams);
-
+int GetcmdlineParameters(int narg, char ** cmdarg, string *fnameparams, int *namefileflag);
 
 int getIntParam(const string & paramsFileName, const string & key);
 string getStringParam(const string & paramsFileName, const string & key);

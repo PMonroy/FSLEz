@@ -46,7 +46,9 @@ int main(int argc, char **argv){
    ********************************************************************************/
 
   string fnameparams;// File name that stores the parameters
-  if(GetcmdlineParameters(argc, argv, &fnameparams)){//Get cmd line parameters
+  int namefileflag;
+
+  if(GetcmdlineParameters(argc, argv, &fnameparams, &namefileflag)){//Get cmd line parameters
     cout << "Error getting parameters from file" <<endl;
     return 1;
   }
@@ -356,8 +358,14 @@ int main(int argc, char **argv){
     fsle.push_back(log(response[qcore[q]])/exit_time[qcore[q]]);
   }
 
+
+  /**********************************************************
+   * WRITE RESULTS
+   **********************************************************/
+
+
   // Save fslez grid in a file
-  string nfilegridfsle2d = 
+  string nfilegridfsle3d = 
     "fslez_lon"    + numprintf(4,0,fslezParams.domainmin.x) 
     + numprintf(4,0,fslezParams.domainmax.x)
     + numprintf(4,3,fslezParams.intergrid.x)
@@ -368,50 +376,67 @@ int main(int argc, char **argv){
     + numprintf(4,0,fslezParams.domainmax.z)
     + numprintf(4,0,fslezParams.intergrid.z)
     + ".grid";
-  ofstream ofilegridfsle2d(nfilegridfsle2d.c_str());
 
 #ifdef DEBUG 
-  cout << "Save grid in file: " << nfilegridfsle2d <<endl;
+  cout << "Save grid in file: " << nfilegridfsle3d <<endl;
 #endif
 
-  for(q=0; q<numcorepoints; q++){
-      ofilegridfsle2d<<grid[q]<<endl;
+  if(!ifstream(nfilegridfsle3d.c_str())){ // Check if file exists
+    ofstream ofilegridfsle3d(nfilegridfsle3d.c_str());
+    for(q=0; q<numcorepoints; q++){
+      ofilegridfsle3d<<grid[q]<<endl;
+    }
+    ofilegridfsle3d.close();
   }
-  ofilegridfsle2d.close();
 
 #ifdef DEBUG
   cout << "[Complete]" << endl;
 #endif
 
-  // save fslez values in a file
-  string nfilefsle2d = 
-    "fslez_lon"    + numprintf(4,0,fslezParams.domainmin.x) 
-    + numprintf(4,0,fslezParams.domainmax.x)
-    + numprintf(4,3,fslezParams.intergrid.x)
-    + "_lat"       + numprintf(4,0,fslezParams.domainmin.y)
-    + numprintf(4,0,fslezParams.domainmax.y)
-    + numprintf(4,3,fslezParams.intergrid.y)
-    + "_dpt"       + numprintf(4,0,fslezParams.domainmin.z)
-    + numprintf(4,0,fslezParams.domainmax.z)
-    + numprintf(4,0,fslezParams.intergrid.z)
-    + "_dl"        + numprintf(3,0,fslezParams.deltamax/1000.0)
-    + "_ts"        + numprintf(4,0,fslezParams.intstep) 
-    + "_t"         + numprintf(4,0,fslezParams.tau) 
-    + "_d"         + numprintf(2,0,fslezParams.seeddate.tm_mday)
-    + numprintf(2,0,fslezParams.seeddate.tm_mon+1)
-    + numprintf(2,0,fslezParams.seeddate.tm_year)
-    + ".data";
+  // Save fslez values in a file
+
+  string rawname;
+
+  if(namefileflag==1){
+    size_t lastdot=fnameparams.find_last_of(".");
+    if(lastdot==string::npos){
+      rawname="fsle3d_"+fnameparams;
+    }
+    else{
+      rawname="fsle3d_"+fnameparams.substr(0,lastdot);
+    }
+  }
+  else{
+    rawname="fslez_lon"    + numprintf(4,0,fslezParams.domainmin.x) 
+      + numprintf(4,0,fslezParams.domainmax.x)
+      + numprintf(4,3,fslezParams.intergrid.x)
+      + "_lat"       + numprintf(4,0,fslezParams.domainmin.y)
+      + numprintf(4,0,fslezParams.domainmax.y)
+      + numprintf(4,3,fslezParams.intergrid.y)
+      + "_dpt"       + numprintf(4,0,fslezParams.domainmin.z)
+      + numprintf(4,0,fslezParams.domainmax.z)
+      + numprintf(4,0,fslezParams.intergrid.z)
+      + "_dl"        + numprintf(3,0,fslezParams.deltamax/1000.0)
+      + "_ts"        + numprintf(4,0,fslezParams.intstep) 
+      + "_t"         + numprintf(4,0,fslezParams.tau) 
+      + "_d"         + numprintf(2,0,fslezParams.seeddate.tm_mday)
+      + numprintf(2,0,fslezParams.seeddate.tm_mon+1)
+      + numprintf(2,0,fslezParams.seeddate.tm_year);
+  }
+
+  string nfilefsle3d=rawname + ".data";
 
 #ifdef DEBUG
   // Verbose: Save fsle values in ascii file
-  cout << "Save fsle values in file: " << nfilefsle2d <<endl;
+  cout << "Save fsle values in file: " << nfilefsle3d <<endl;
 #endif
 
-  ofstream ofilefsle2d(nfilefsle2d.c_str());
+
+  ofstream ofilefsle3d(nfilefsle3d.c_str());
   for(q=0; q<numcorepoints; q++){
-    ofilefsle2d<<fsle[q]<<endl;
+    ofilefsle3d<<fsle[q]<<endl;
   }
-  ofilefsle2d.close();
+  ofilefsle3d.close();
 
 #ifdef DEBUG
   // Verbose: success file saved  
@@ -422,29 +447,13 @@ int main(int argc, char **argv){
    * WRITING RESULT IN VTK FILE
    **********************************************************/
 
-  string vtkfilefsle2d = 
-    "fslez_lon"       + numprintf(4,0,fslezParams.domainmin.x) 
-    + numprintf(4,0,fslezParams.domainmax.x)
-    + numprintf(4,3,fslezParams.intergrid.x)
-    + "_lat"       + numprintf(4,0,fslezParams.domainmin.y)
-    + numprintf(4,0,fslezParams.domainmax.y)
-    + numprintf(4,3,fslezParams.intergrid.y)
-    + "_dpt"       + numprintf(4,0,fslezParams.domainmin.z)
-    + numprintf(4,0,fslezParams.domainmax.z)
-    + numprintf(4,0,fslezParams.intergrid.z)
-    + "_dl"        + numprintf(3,0,fslezParams.deltamax/1000.0)
-    + "_ts"        + numprintf(4,0,fslezParams.intstep) 
-    + "_t"         + numprintf(4,0,fslezParams.tau) 
-    + "_d"         + numprintf(2,0,fslezParams.seeddate.tm_mday)
-    + numprintf(2,0,fslezParams.seeddate.tm_mon+1)
-    + numprintf(2,0,fslezParams.seeddate.tm_year)
-    + ".vtk";
+  string vtkfilefsle3d = rawname + ".vtk";
 
 #ifdef DEBUG
-  cout << "Save ftle field in vtk file: " << vtkfilefsle2d <<endl;
+  cout << "Save ftle field in vtk file: " << vtkfilefsle3d <<endl;
 #endif
 
-  ofstream vtkfile(vtkfilefsle2d.c_str());
+  ofstream vtkfile(vtkfilefsle3d.c_str());
   vtkfile<<"# vtk DataFile Version 3.0"<<endl;
   vtkfile<<"Finite size Lyapunov exponent 3D"<<endl; 
   vtkfile<<"ASCII"<<endl;

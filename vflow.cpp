@@ -454,12 +454,12 @@ int GetVPartialDeriv(double t,vectorXYZ point, vectorIJK dir, vectorXYZ *dvdr){
 	  }
 
 	  //COASTAL CHECKING!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!
-	    if(vflow[l][k][j][i].x == vflowparams.ufillvalue 
-	     || vflow[l][k][j][i].y == vflowparams.vfillvalue
-	     || vflow[l][k0][j0][i0].x == vflowparams.ufillvalue 
-	     || vflow[l][k0][j0][i0].y == vflowparams.vfillvalue
-	     || vflow[l][k1][j1][i1].x == vflowparams.ufillvalue 
-	     || vflow[l][k1][j1][i1].y == vflowparams.vfillvalue){
+	    if(vflow[l][k][j][i].x <= vflowparams.ufillvalue 
+	     || vflow[l][k][j][i].y <= vflowparams.vfillvalue
+	     || vflow[l][k0][j0][i0].x <= vflowparams.ufillvalue 
+	     || vflow[l][k0][j0][i0].y <= vflowparams.vfillvalue
+	     || vflow[l][k1][j1][i1].x <= vflowparams.ufillvalue 
+	     || vflow[l][k1][j1][i1].y <= vflowparams.vfillvalue){
 	    return 1;
 	    }
 
